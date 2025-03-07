@@ -1,101 +1,298 @@
-import Image from "next/image";
+"use client";
+import HeaderSection from "@/components/section/header";
+import StepFive from "@/components/step/step-five";
+import StepFour from "@/components/step/step-four";
+import StepOne from "@/components/step/step-one";
+import StepThree from "@/components/step/step-three";
+import StepTwo from "@/components/step/step-two";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { CheckCircle, ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { useState } from "react";
+import { Toaster, toast } from "sonner";
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [step, setStep] = useState<number>(1);
+  const [numBoxes, setNumBoxes] = useState<number>(0);
+  const [figurineInput, setFigurineInput] = useState<string>("");
+  const [figurines, setFigurines] = useState<string[]>([]);
+  const [targetFigurine, setTargetFigurine] = useState<string>("");
+  const [boxConstraints, setBoxConstraints] = useState<
+    Record<number, string[]>
+  >({});
+  const [knownBoxes, setKnownBoxes] = useState<Record<number, string>>({});
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
+  const clearKnownBox = (box: number) => {
+    const updatedKnownBoxes = { ...knownBoxes };
+    delete updatedKnownBoxes[box];
+    setKnownBoxes(updatedKnownBoxes);
+    toast.success(`Box ${box} has been cleared`, {
+      description: "The probabilities have been updated",
+    });
+  };
+
+  // Step 1: Initialize boxes and figurines
+  const handleInitialize = () => {
+    if (numBoxes <= 0) {
+      toast.error("Please enter a positive number of boxes");
+      return;
+    }
+
+    if (!figurineInput.trim()) {
+      toast.error("Please enter at least one figurine name");
+      return;
+    }
+
+    const names = figurineInput
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean);
+
+    if (names.length === 0) {
+      toast.error("Please enter valid figurine names");
+      return;
+    }
+
+    if (names.length < numBoxes) {
+      toast.warning(
+        "You have fewer figurines than boxes. This is valid but unusual."
+      );
+      return;
+    }
+
+    setFigurines(names);
+    setBoxConstraints(
+      Array.from({ length: numBoxes }, (_, i) => i + 1).reduce(
+        (acc, box) => ({ ...acc, [box]: [] }),
+        {}
+      )
+    );
+    setStep(2);
+  };
+
+  // Step 2: Select target figurine
+  const handleSetTarget = (value: any) => {
+    setTargetFigurine(value);
+    setStep(3);
+  };
+
+  // Step 3: Update constraints for a box
+  const toggleConstraint = (box: any, figurine: any) => {
+    setBoxConstraints((prev) => {
+      const currentConstraints = [...(prev[box] || [])];
+      const index = currentConstraints.indexOf(figurine);
+
+      if (index === -1) {
+        currentConstraints.push(figurine);
+      } else {
+        currentConstraints.splice(index, 1);
+      }
+
+      return {
+        ...prev,
+        [box]: currentConstraints,
+      };
+    });
+  };
+
+  // Step 4: Calculate probabilities
+  const calculateProbabilities = (): Record<string, number[]> => {
+    const probabilities: Record<string, number[]> = {};
+
+    figurines.forEach((figurine) => {
+      probabilities[figurine] = Array.from({ length: numBoxes }, (_, i) => {
+        const box = i + 1;
+        if (knownBoxes[box]) {
+          return knownBoxes[box] === figurine ? 100 : 0;
+        }
+        if (boxConstraints[box]?.includes(figurine)) {
+          return 0;
+        }
+
+        // Count how many boxes this figurine could be in
+        const possibleBoxes = Array.from(
+          { length: numBoxes },
+          (_, i) => i + 1
+        ).filter(
+          (b) => !boxConstraints[b]?.includes(figurine) && !knownBoxes[b]
+        );
+
+        return possibleBoxes.length ? (1 / possibleBoxes.length) * 100 : 0;
+      });
+    });
+
+    return probabilities;
+  };
+
+  // Get focus boxes for target figurine
+  const getFocusBoxes = (probabilities: Record<string, number[]>) => {
+    if (!targetFigurine) return [];
+
+    return probabilities[targetFigurine]
+      .map((prob, index) => ({ box: index + 1, prob }))
+      .filter((item) => item.prob > 0)
+      .sort((a, b) => b.prob - a.prob);
+  };
+
+  // Update when a box's content is revealed
+  const handleRevealBox = (box: any, figurine: any) => {
+    setKnownBoxes((prev) => ({
+      ...prev,
+      [box]: figurine,
+    }));
+
+    toast.success(`Box ${box} contains ${figurine}`, {
+      description: "The probabilities have been updated",
+    });
+  };
+
+  // Calculate results
+  const probabilities = calculateProbabilities();
+  const focusBoxes = getFocusBoxes(probabilities);
+
+  // Navigation functions
+  const nextStep = () => setStep((prev) => Math.min(prev + 1, 5));
+  const prevStep = () => setStep((prev) => Math.max(prev - 1, 1));
+
+  return (
+    <div className="min-h-screen">
+      <HeaderSection />
+      <main className="container mx-auto py-2">
+        <Card className="bg-transparent">
+          <CardHeader>
+            <CardTitle className="text-2xl flex text-primary items-center gap-2">
+              <Search className="h-6 w-6" />
+              Find for your wished box
+            </CardTitle>
+            <CardDescription>
+              This does not guarantee that your desired box will be hit, but
+              rather provides a probability-based calculation.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {/* Progress Bar */}
+            <div className="mb-6">
+              <div className="flex justify-evenly mb-2">
+                {[1, 2, 3, 4, 5].map((s) => (
+                  <div
+                    key={s}
+                    className={`flex flex-col items-center ${
+                      s <= step ? "text-primary" : "text-muted-foreground"
+                    }`}
+                  >
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center mb-1 ${
+                        s < step
+                          ? "bg-primary text-primary-foreground"
+                          : s === step
+                          ? "border-2 border-primary"
+                          : "border-2 border-muted"
+                      }`}
+                    >
+                      {s < step ? <CheckCircle className="h-5 w-5" /> : s}
+                    </div>
+                    <span className="text-xs hidden sm:block">
+                      {s === 1
+                        ? "Setup"
+                        : s === 2
+                        ? "Target"
+                        : s === 3
+                        ? "Constraints"
+                        : s === 4
+                        ? "Probabilities"
+                        : "Results"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Step 1: Setup */}
+              {step === 1 && (
+                <StepOne
+                  numBoxes={numBoxes}
+                  setNumBoxes={setNumBoxes}
+                  figurineInput={figurineInput}
+                  setFigurineInput={setFigurineInput}
+                />
+              )}
+
+              {/* Step 2: Target Selection */}
+              {step === 2 && (
+                <StepTwo
+                  targetFigurine={targetFigurine}
+                  handleSetTarget={handleSetTarget}
+                  figurines={figurines}
+                />
+              )}
+
+              {/* Step 3: Box Constraints */}
+              {step === 3 && (
+                <StepThree
+                  numBoxes={numBoxes}
+                  figurines={figurines}
+                  knownBoxes={knownBoxes}
+                  boxConstraints={boxConstraints}
+                  toggleConstraint={toggleConstraint}
+                  handleRevealBox={handleRevealBox}
+                  clearKnownBox={clearKnownBox}
+                />
+              )}
+
+              {/* Step 4: Probabilities */}
+              {step === 4 && (
+                <StepFour
+                  knownBoxes={knownBoxes}
+                  numBoxes={numBoxes}
+                  targetFigurine={targetFigurine}
+                  probabilities={probabilities}
+                  boxConstraints={boxConstraints}
+                  figurines={figurines}
+                />
+              )}
+
+              {/* Step 5: Results */}
+              {step === 5 && (
+                <StepFive
+                  targetFigurine={targetFigurine}
+                  focusBoxes={focusBoxes}
+                />
+              )}
+            </div>
+          </CardContent>
+
+          {/* Card Footer */}
+          <CardFooter className="flex justify-between">
+            <Button variant="outline" onClick={prevStep} disabled={step === 1}>
+              <ChevronLeft className="h-4 w-4 mr-2" />
+              Back
+            </Button>
+
+            {step === 1 ? (
+              <Button onClick={handleInitialize}>
+                Continue
+                <ChevronRight className="h-4 w-4 ml-2" />
+              </Button>
+            ) : step < 5 ? (
+              <Button onClick={nextStep}>
+                Continue
+                <ChevronRight className="h-4 w-4 ml-2" />
+              </Button>
+            ) : (
+              <Button variant="outline" onClick={() => setStep(3)}>
+                Update Constraints
+              </Button>
+            )}
+          </CardFooter>
+        </Card>
+        <Toaster />
       </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
     </div>
   );
 }
